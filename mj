@@ -1,0 +1,129 @@
+#!/bin/sh
+
+# SPDX-FileCopyrightText: 2024 Trofim Andreevich Fedoseev
+# SPDX-License-Identifier: Zlib
+
+
+MJ_SRC="code.c"
+MJ_SRC_OUT="out.c"
+MJ_PG="pg"
+
+
+function debug {
+	if [ -n "$MJ_DEBUG" ]; then echo "$@"; fi
+}
+
+ACTD=$(pwd)
+
+if [ ! -f "$MJ_SRC" ]; then
+	echo "SOURCE_FILE_DOES_NOT_EXITS:" "$MJ_SRC"
+	exit
+fi
+
+expand -t4 "$MJ_SRC" > "$MJ_SRC_OUT"
+gcc \
+	-O2 -Wall -Werror -Wformat-security -Wignored-qualifiers -Winit-self \
+	-Wswitch-default -Wfloat-equal -Wpointer-arith -Wtype-limits \
+	-Wempty-body -Wno-logical-op -Wstrict-prototypes -Wold-style-declaration \
+	-Wold-style-definition -Wmissing-parameter-type \
+	-Wmissing-field-initializers -Wnested-externs -Wno-pointer-sign \
+	-std=c99 -lm -g \
+	"$MJ_SRC_OUT" -o "$MJ_PG"
+
+
+TMPD=$(mktemp -d)
+TMP_OUTPUT=$(mktemp)
+TMP_ERRORS=$(mktemp)
+
+for CASE in ./test/case*; do
+	debug "$CASE"
+	rm -rf $TMPD/*
+	if [ -d "$CASE/dir" ]; then
+		cp -r $CASE/dir/* "$TMPD"
+	fi
+
+	if [ -n "$(ls -A $TMPD)" ]; then
+		debug -e "TMPD state:\n" "$(tree $TMPD)"
+	fi
+
+	if [ -e "$CASE/env" ]; then
+		ENV_TEXT="$(cat "$CASE/env" | tr "\n" " ")"
+	fi
+	if [ -n "$ENV_TEXT" ]; then
+		debug "ENV_TEXT:" "$ENV_TEXT"
+	fi
+
+	if [ -e "$CASE/arg" ]; then
+		ARG_TEXT="$(cat "$CASE/arg" | tr "\n" " ")"
+	fi
+	if [ -n "$ARG_TEXT" ]; then
+		debug "ARG_TEXT:" "$ARG_TEXT"
+	fi
+
+	if [ -e "$CASE/inp" ]; then
+		INP_FILE="$CASE/inp"
+		debug "INP_FILE:" "$INP_FILE"
+	else
+		INP_FILE="/dev/null"
+	fi
+
+	COMMAND_TEXT="$ENV_TEXT $ACTD/$MJ_PG $ARG_TEXT"
+	debug -e "COMMAND_TEXT:\n" "$COMMAND_TEXT"
+	env \
+		--chdir=$TMPD $COMMAND_TEXT \
+		< $INP_FILE 1> $TMP_OUTPUT 2> $TMP_ERRORS
+
+	if [ $? -ne 0 ]; then
+		debug "ERROR!"
+		cat $TMP_ERRORS
+	fi
+
+	if [ -e "$CASE/out" ]; then
+		debug "OUTPUT_FILE:" "$CASE/out"
+		diff -bBq "$TMP_OUTPUT" "$CASE/out"
+	fi
+
+	if [ -e "$CASE/err" ]; then
+		debug "ERRORS_FILE:" "$CASE/err"
+		diff -bBq "$TMP_ERRORS" "$CASE/err"
+	fi
+
+	if [ -d "$CASE/bin" ]; then
+		pushd "$CASE/bin" > /dev/null
+		for REF in $(find *); do
+
+			if [ -d "$REF" ]; then
+				if [ ! -d "$TMPD/$REF" ]; then
+					echo "DIRECTORY_DOES_NOT_EXIT:" "$REF"
+				fi
+				continue
+			fi
+
+			debug "COMPARE_AS_DATA:" "$REF"
+			cmp "$TMPD/$REF" "$REF"
+		done
+		popd > /dev/null
+	fi
+
+	if [ -d "$CASE/ref" ]; then
+		pushd "$CASE/ref" > /dev/null
+		for REF in $(find *); do
+
+			if [ -d "$REF" ]; then
+				if [ ! -d "$TMPD/$REF" ]; then
+					echo "DIRECTORY_DOES_NOT_EXIT:" "$REF"
+				fi
+				continue
+			fi
+
+			debug "COMPARE_AS_TEXT:" "$REF"
+			diff -bBq "$TMPD/$REF" "$REF"
+		done
+		popd > /dev/null
+	fi
+done
+
+rm -rf "$TMPD"
+rm "$TMP_ERRORS"
+rm "$TMP_OUTPUT"
+
