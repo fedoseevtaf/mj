@@ -1,35 +1,20 @@
-#!/bin/sh
+#!/bin/bash
 
 # SPDX-FileCopyrightText: 2024 Trofim Andreevich Fedoseev
 # SPDX-License-Identifier: Zlib
 
 
-MJ_SRC="code.c"
-MJ_SRC_OUT="out.c"
-MJ_PG="pg"
+if [ -z "$MJ_PG" ]; then
+	echo "Set the MJ_PG environment variable to the path of your script to test."
+	exit
+fi
 
 
-function debug {
+debug() {
 	if [ -n "$MJ_DEBUG" ]; then echo "$@"; fi
 }
 
 ACTD=$(pwd)
-
-if [ ! -f "$MJ_SRC" ]; then
-	echo "SOURCE_FILE_DOES_NOT_EXITS:" "$MJ_SRC"
-	exit
-fi
-
-expand -t4 "$MJ_SRC" > "$MJ_SRC_OUT"
-gcc \
-	-O2 -Wall -Werror -Wformat-security -Wignored-qualifiers -Winit-self \
-	-Wswitch-default -Wfloat-equal -Wpointer-arith -Wtype-limits \
-	-Wempty-body -Wno-logical-op -Wstrict-prototypes -Wold-style-declaration \
-	-Wold-style-definition -Wmissing-parameter-type \
-	-Wmissing-field-initializers -Wnested-externs -Wno-pointer-sign \
-	-std=c99 -lm -g \
-	"$MJ_SRC_OUT" -o "$MJ_PG"
-
 
 TMPD=$(mktemp -d)
 TMP_OUTPUT=$(mktemp)
@@ -68,13 +53,15 @@ for CASE in ./test/case*; do
 	fi
 
 	COMMAND_TEXT="$ENV_TEXT $ACTD/$MJ_PG $ARG_TEXT"
-	debug -e "COMMAND_TEXT:\n" "$COMMAND_TEXT"
+	debug "COMMAND_TEXT:"
+	debug "$COMMAND_TEXT"
 	env \
 		--chdir=$TMPD $COMMAND_TEXT \
 		< $INP_FILE 1> $TMP_OUTPUT 2> $TMP_ERRORS
 
-	if [ $? -ne 0 ]; then
-		debug "ERROR!"
+	EXIT_CODE=$?
+	if [ $EXIT_CODE -ne 0 ]; then
+		debug "ERROR!" $EXIT_CODE
 		cat $TMP_ERRORS
 	fi
 
