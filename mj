@@ -9,6 +9,24 @@ if [ -z "$MJ_PG" ]; then
 	exit
 fi
 
+MJ_CASES="./test/case*"
+if [ $# != 0 ]; then
+	if [ "$1" = "case" ]; then
+		if [ $# != 2 ]; then
+			echo "Provide single title of the case to run"
+			exit
+		fi
+		if [ ! -d "./test/case$2" ]; then
+			echo Test case do not exist: "./test/case$2"
+			exit
+		fi
+		MJ_CASES="./test/case$2"
+	else
+		echo "Undefined command: $1"
+		exit
+	fi
+fi
+
 
 debug() {
 	if [ -n "$MJ_DEBUG" ]; then echo "$@"; fi
@@ -20,7 +38,7 @@ TMPD=$(mktemp -d)
 TMP_OUTPUT=$(mktemp)
 TMP_ERRORS=$(mktemp)
 
-for CASE in ./test/case*; do
+for CASE in $MJ_CASES; do
 	debug "$CASE"
 	rm -rf $TMPD/*
 	if [ -d "$CASE/dir" ]; then
